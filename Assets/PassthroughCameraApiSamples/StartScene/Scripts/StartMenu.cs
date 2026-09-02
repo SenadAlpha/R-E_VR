@@ -1,91 +1,226 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-// Original Source code from Oculus Starter Samples (https://github.com/oculus-samples/Unity-StarterSamples)
 
-using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Collections;
 using Meta.XR.Samples;
-using PassthroughCameraSamples.MultiObjectDetection;
-using Unity.InferenceEngine;
+using PassthroughCameraSamples.MainApp;
+using PassthroughCameraSamples.MainApp.Admin;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace PassthroughCameraSamples.StartScene
 {
-    // Create menu of all scenes included in the build.
+    /// <summary>
+    /// StartScene 메인 메뉴. DebugUIBuilder 버튼을 쓰며, 도구 초기화 실패와 무관하게
+    /// ☰ 로 열고 닫힙니다.
+    /// </summary>
     [MetaCodeSample("PassthroughCameraApiSamples-StartScene")]
+    [DefaultExecutionOrder(200)]
     public class StartMenu : MonoBehaviour
     {
-        public OVROverlay Overlay;
-        public OVROverlay Text;
-        public OVRCameraRig VrRig;
-        [SerializeField] private ModelAsset m_objectDetectionModel;
+        [SerializeField] private float autoCloseDelaySeconds = 1.5f;
 
-        private void Awake() => SentisInferenceRunManager.PreloadModel(m_objectDetectionModel);
+        private DebugUIBuilder m_builder;
+        private MenuHoverTracker m_hoverTracker;
+        private MrAppServices m_app;
+        private bool m_isOpen;
+        private bool m_ready;
+        private float m_pointerLeftAt = -1f;
+        private int m_menuPresses;
+        private float m_menuPressAt = -999f;
 
-        private void Start()
+        private IEnumerator Start()
         {
-            var generalScenes = new List<Tuple<int, string>>();
-            var passthroughScenes = new List<Tuple<int, string>>();
-            var proControllerScenes = new List<Tuple<int, string>>();
+            yield return null;
+            yield return null;
 
-            var n = UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings;
-            for (var sceneIndex = 1; sceneIndex < n; ++sceneIndex)
+            m_builder = DebugUIBuilder.Instance;
+            if (!m_builder)
             {
-                var path = UnityEngine.SceneManagement.SceneUtility.GetScenePathByBuildIndex(sceneIndex);
+                m_builder = FindFirstObjectByType<DebugUIBuilder>(FindObjectsInactive.Include);
+            }
 
-                if (path.Contains("Passthrough"))
+            if (!m_builder)
+            {
+                Debug.LogError("[StartMenu] DebugUIBuilder not found.");
+                yield break;
+            }
+
+            AddMenuButton("글씨쓰기", () => UseTool(() => m_app?.TextTool.SpawnTextItem()));
+            AddMenuButton("사진찍기", () => UseTool(() => m_app?.PhotoTool.OpenViewfinder()));
+            AddMenuButton("종이스캔", () => UseTool(() => m_app?.PaperScanTool.OpenScan()));
+            AddMenuButton("그림 그리기", () => UseTool(() => m_app?.DrawTool.SpawnWhiteboard()));
+            AddMenuButton("도움말", () => UseTool(() => m_app?.HelpPanel.Open()));
+            AddMenuButton("가지고 놀기!", () => UseTool(() => m_app?.PlaySubmenu.Open()));
+
+            var contentPanel = m_builder.transform.Find("Content");
+            if (contentPanel)
+            {
+                m_hoverTracker = contentPanel.gameObject.GetComponent<MenuHoverTracker>();
+                if (!m_hoverTracker)
                 {
-                    passthroughScenes.Add(new Tuple<int, string>(sceneIndex, path));
-                }
-                else if (path.Contains("TouchPro"))
-                {
-                    proControllerScenes.Add(new Tuple<int, string>(sceneIndex, path));
-                }
-                else
-                {
-                    generalScenes.Add(new Tuple<int, string>(sceneIndex, path));
+                    m_hoverTracker = contentPanel.gameObject.AddComponent<MenuHoverTracker>();
                 }
             }
 
-            var uiBuilder = DebugUIBuilder.Instance;
-            if (passthroughScenes.Count > 0)
-            {
-                _ = uiBuilder.AddLabel("Passthrough Sample Scenes", DebugUIBuilder.DEBUG_PANE_LEFT);
-                foreach (var scene in passthroughScenes)
-                {
-                    _ = uiBuilder.AddButton(Path.GetFileNameWithoutExtension(scene.Item2), () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_LEFT);
-                }
-            }
+            m_ready = true;
+            Debug.Log("[StartMenu] Menu ready. Press left ☰.");
 
-            if (proControllerScenes.Count > 0)
-            {
-                _ = uiBuilder.AddLabel("Pro Controller Sample Scenes", DebugUIBuilder.DEBUG_PANE_RIGHT);
-                foreach (var scene in proControllerScenes)
-                {
-                    _ = uiBuilder.AddButton(Path.GetFileNameWithoutExtension(scene.Item2), () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_RIGHT);
-                }
-            }
+            yield return null;
 
-            _ = uiBuilder.AddLabel("Press ☰ at any time to return to scene selection", DebugUIBuilder.DEBUG_PANE_CENTER);
-            if (generalScenes.Count > 0)
+            try
             {
-                _ = uiBuilder.AddDivider(DebugUIBuilder.DEBUG_PANE_CENTER);
-                _ = uiBuilder.AddLabel("Sample Scenes", DebugUIBuilder.DEBUG_PANE_CENTER);
-                foreach (var scene in generalScenes)
-                {
-                    _ = uiBuilder.AddButton(Path.GetFileNameWithoutExtension(scene.Item2), () => LoadScene(scene.Item1), -1, DebugUIBuilder.DEBUG_PANE_CENTER);
-                }
+                m_app = MrAppRuntimeSetup.EnsureCreated();
+                m_app?.AdminMenu?.Bind(m_builder, m_app.ImageSpawner);
             }
-
-            uiBuilder.Show();
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[StartMenu] Tool setup failed (menu still works): " + ex);
+            }
         }
 
-        private static void LoadScene(int idx)
+        private void AddMenuButton(string label, UnityEngine.Events.UnityAction onClick)
         {
-            DebugUIBuilder.Instance.Hide();
-            Debug.Log("Load scene: " + idx);
-            SceneManager.LoadScene(idx);
+            _ = m_builder.AddButton(label, () => onClick(), -1, DebugUIBuilder.DEBUG_PANE_CENTER, false);
+        }
+
+        private void UseTool(System.Action action)
+        {
+            CloseMenuKeepLaser();
+            if (m_app == null)
+            {
+                Debug.LogError("[StartMenu] Tools not initialized.");
+                return;
+            }
+
+            action?.Invoke();
+            MrPointer.Show();
+        }
+
+        private void Update()
+        {
+            if (!m_ready || !m_builder)
+            {
+                return;
+            }
+
+            if (WasMenuButtonPressed())
+            {
+                HandleMenuButton();
+                return;
+            }
+
+            if (m_isOpen && OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch))
+            {
+                Close();
+                return;
+            }
+
+            if (!m_isOpen || !m_hoverTracker)
+            {
+                return;
+            }
+
+            if (!m_hoverTracker.HasBeenInside || m_hoverTracker.IsPointerInside)
+            {
+                m_pointerLeftAt = -1f;
+                return;
+            }
+
+            if (m_pointerLeftAt < 0f)
+            {
+                m_pointerLeftAt = Time.unscaledTime;
+            }
+            else if (Time.unscaledTime - m_pointerLeftAt >= autoCloseDelaySeconds)
+            {
+                Close();
+            }
+        }
+
+        private void HandleMenuButton()
+        {
+            var now = Time.unscaledTime;
+            if (now - m_menuPressAt > 1.5f)
+            {
+                m_menuPresses = 0;
+            }
+
+            m_menuPresses++;
+            m_menuPressAt = now;
+
+            if (m_menuPresses >= 5)
+            {
+                m_menuPresses = 0;
+                OpenAdmin();
+                return;
+            }
+
+            if (m_app?.AdminMenu != null && m_app.AdminMenu.IsOpen)
+            {
+                m_app.AdminMenu.Close();
+            }
+
+            Toggle();
+        }
+
+        private void OpenAdmin()
+        {
+            Close();
+            if (m_app?.AdminMenu == null)
+            {
+                Debug.LogError("[StartMenu] Admin menu is not ready.");
+                return;
+            }
+
+            m_app.AdminMenu.Open();
+        }
+
+        private static bool WasMenuButtonPressed()
+        {
+            return OVRInput.GetUp(OVRInput.Button.Start, OVRInput.Controller.LTouch)
+                || OVRInput.GetUp(OVRInput.Button.Start);
+        }
+
+        private void Toggle()
+        {
+            if (m_isOpen)
+            {
+                Close();
+            }
+            else
+            {
+                Open();
+            }
+        }
+
+        private void Open()
+        {
+            m_isOpen = true;
+            m_pointerLeftAt = -1f;
+            m_builder.Show();
+            m_builder.SetOnlyPaneActive(DebugUIBuilder.DEBUG_PANE_CENTER);
+            MainAppPlacement.PlaceAlongPointer(m_builder.transform, FindFirstObjectByType<OVRCameraRig>(), 1.15f);
+            if (m_hoverTracker)
+            {
+                m_hoverTracker.ResetTracking();
+            }
+        }
+
+        private void Close()
+        {
+            m_isOpen = false;
+            m_pointerLeftAt = -1f;
+            m_builder.Hide();
+        }
+
+        private void CloseMenuKeepLaser()
+        {
+            m_isOpen = false;
+            m_pointerLeftAt = -1f;
+            if (m_builder)
+            {
+                m_builder.Hide();
+            }
+
+            MrPointer.Show();
         }
     }
 }

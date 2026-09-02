@@ -1,9 +1,28 @@
 {
+  "scopedRegistries": [
+    {
+      "name": "Meta",
+      "url": "https://npm.developer.oculus.com",
+      "scopes": [
+        "com.meta.xr.sdk.core",
+        "com.meta.xr.sdk.interaction",
+        "com.meta.xr.sdk.interaction.ovr",
+        "com.meta.xr.sdk.platform",
+        "com.meta.xr.sdk.sharedassets",
+        "com.meta.xr.mrutilitykit"
+      ]
+    }
+  ],
   "dependencies": {
-    "com.meta.xr.mrutilitykit": "85.0.0",
+    "com.meta.xr.mrutilitykit": "205.0.0",
+    "com.meta.xr.sdk.interaction": "205.0.0",
+    "com.meta.xr.sdk.interaction.ovr": "205.0.0",
+    "com.meta.xr.sdk.interaction.ovr.samples": "69.0.1",
+    "com.meta.xr.sdk.platform": "205.0.0",
+    "com.meta.xr.sdk.sharedassets": "69.0.0",
+    "com.unity.ai.inference": "2.2.1",
     "com.unity.feature.development": "1.0.2",
     "com.unity.mobile.android-logcat": "1.4.7",
-    "com.unity.ai.inference": "2.2.1",
     "com.unity.ugui": "2.0.0",
     "com.unity.xr.management": "4.5.4",
     "com.unity.xr.openxr": "1.15.1",

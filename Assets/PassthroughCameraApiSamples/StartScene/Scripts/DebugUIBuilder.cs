@@ -309,11 +309,31 @@ namespace PassthroughCameraSamples.StartScene
 
             if (highResolutionText)
             {
-                ((TextMeshProUGUI)buttonRT.GetComponentsInChildren(typeof(TextMeshProUGUI), true)[0]).text = label;
+                var tmps = buttonRT.GetComponentsInChildren<TextMeshProUGUI>(true);
+                if (tmps.Length > 0)
+                {
+                    tmps[0].text = label;
+                }
+                else
+                {
+                    var legacyTexts = buttonRT.GetComponentsInChildren<Text>(true);
+                    if (legacyTexts.Length > 0)
+                    {
+                        legacyTexts[0].text = label;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[DebugUIBuilder] No Text/TMP on button prefab for label '{label}'.");
+                    }
+                }
             }
             else
             {
-                ((Text)buttonRT.GetComponentsInChildren(typeof(Text), true)[0]).text = label;
+                var legacyTexts = buttonRT.GetComponentsInChildren<Text>(true);
+                if (legacyTexts.Length > 0)
+                {
+                    legacyTexts[0].text = label;
+                }
             }
 
             AddRect(buttonRT, targetCanvas);
@@ -413,6 +433,22 @@ namespace PassthroughCameraSamples.StartScene
             if (m_lp)
             {
                 m_lp.enabled = isOn;
+            }
+        }
+
+        public void SetOnlyPaneActive(int pane)
+        {
+            if (m_targetContentPanels == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < m_targetContentPanels.Length; ++i)
+            {
+                var hasContent = m_insertedElements != null
+                                 && i < m_insertedElements.Length
+                                 && m_insertedElements[i].Count > 0;
+                m_targetContentPanels[i].gameObject.SetActive(hasContent && i == pane);
             }
         }
     }
